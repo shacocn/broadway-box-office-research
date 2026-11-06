@@ -1,0 +1,3 @@
+# Methodology
+
+Production OLS uses HC3 covariance and the exact formula: `log_gross ~ log_seats + Adapted + Revival + C(Year) + C(Music_Style) + Plot_Comedy + Plot_Tragedy + Plot_Romance + Plot_Mystery + Plot_Drama + Plot_Adventure + Plot_Crime + Plot_Biographical + Plot_Fantasy`. Categorical levels use sorted treatment coding; coefficient labels identify comparisons with the omitted baseline. Market extensions use month and year controls with HAC maximum lag 8, complete cases per formula, and chronological ordering. Their explicit formulas and matrix diagnostics are in results/market_extensions.csv. Seats are exp(log_seats), not independently verified capacity counts. Gross is nominal USD. No inflation adjustment is applied.

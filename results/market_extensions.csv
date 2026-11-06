@@ -1,0 +1,5 @@
+model,status,n,r_squared,paper_n,paper_r_squared,formula,rank,columns,condition_number,max_leverage
+A,Exploratory extension; not exact reproduction,501,0.5069518527774843,501,0.507,log_market_gross ~ holiday_week + C(month) + C(year),24,24,17.11877131047496,0.12307758194341034
+B,Exploratory extension; not exact reproduction,257,0.6987491153204499,257,0.699,log_market_gross ~ holiday_week + C(month) + C(year) + unemployment_rate_pct + consumer_sentiment_monthly,21,26,6.408443127191006e+18,0.19649425868650316
+C,Exploratory extension; not exact reproduction,236,0.6989318726012288,236,0.671,log_market_gross ~ holiday_week + C(month) + C(year) + unemployment_rate_pct + consumer_sentiment_monthly + nyc_visitors_millions_annual,20,27,2.5146235563185995e+35,0.20234440243849047
+D,Exploratory extension; not exact reproduction,257,0.6961982822999901,257,0.696,log_market_gross ~ holiday_week + C(month) + C(year) + unemployment_rate_pct + consumer_sentiment_halfyear,21,26,5.197727034310109e+18,0.19218423624148026

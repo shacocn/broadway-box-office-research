@@ -1,28 +1,75 @@
-# Broadway Box Office: A Reproducible Two-Level Empirical Analysis
+# Broadway Box Office Research
 
-This project estimates associations between production characteristics and average weekly gross for 67 musicals, and separately explores total market gross over 501 observed weeks. Production OLS with HC3 uncertainty is checked against the supplied research paper. Market extensions use explicit formulas and HAC uncertainty; they are not exact reproductions of the original models.
+[![Research artifact checks](https://github.com/shacocn/broadway-box-office-research/actions/workflows/ci.yml/badge.svg)](https://github.com/shacocn/broadway-box-office-research/actions/workflows/ci.yml)
+[![Deploy research website](https://github.com/shacocn/broadway-box-office-research/actions/workflows/pages.yml/badge.svg)](https://github.com/shacocn/broadway-box-office-research/actions/workflows/pages.yml)
 
-## Reproduce
+An auditable two-level study of Broadway box office performance. The production analysis reproduces the paper's aggregate OLS results for 67 musicals; a separate weekly analysis examines 501 observed market weeks. The public portfolio clearly separates exact benchmark reproduction from newly specified exploratory market models.
 
-Use Python 3.12. Install `python -m pip install -r requirements.txt` and `python -m pip install -e . --no-deps`.
+**[Open the interactive research dashboard](https://shacocn.github.io/broadway-box-office-research/)**
 
-Run `python -m broadway_research.pipeline --input-dir /path/to/authorized/private_inputs --output-dir .`, then `python -m pytest -q`.
+## Key findings
 
-The input directory must contain the original six-sheet analysis workbook. It is not distributed: source redistribution rights have not been established. No synthetic substitute is provided. Artifact tests run on the generated outputs; scientific regeneration requires authorized source access.
+- The production model exactly reproduces the supplied benchmarks to a tolerance of `1e-6`: R² = **0.607957**, capacity coefficient = **1.007385**, HC3 p = **0.000036**, and adaptation coefficient = **0.286721**.
+- Conditional on the recorded controls, a 1% difference in theatre capacity is associated with approximately a **1.01% difference in average weekly gross**. The HC3 95% interval is **0.530 to 1.485**. This is an association, not a causal effect.
+- The positive capacity association remains in the prespecified sensitivity samples, including removal of the top 5% of productions by gross and restriction to productions observed for at least 20 weeks.
+- Unemployment is unavailable for **244 of 501 market weeks (48.7%)**, concentrated in earlier years. Complete-case macroeconomic estimates therefore cover a selected period.
+- The repaired A-D market extensions are full rank and use HAC(8) inference. They are independent exploratory analyses because the original market design matrices are unavailable.
 
-## Explore
+![Production coefficient estimates with HC3 intervals](figures/coefficients.png)
 
-Run `python -m http.server 8000 --directory docs` and open http://localhost:8000. Interactive charts bundle Plotly and work without external JavaScript services.
+## Research components
 
-- [Results](research/results.md)
-- [Methods](research/methodology.md)
-- [Limitations](research/limitations.md)
-- [Reproducibility](research/reproducibility.md)
-- [Source coverage](research/source_coverage.md)
-- [Data dictionary](results/data_dictionary.csv)
+- [Interactive dashboard](https://shacocn.github.io/broadway-box-office-research/) — responsive Plotly views built from aggregate research outputs
+- [Research report](research/report.md) — results, interpretation, and evidence boundary
+- [Methodology](research/methodology.md) — OLS rationale, HC3/HAC inference, diagnostics, missingness, and sensitivity design
+- [Limitations](research/limitations.md) — identification, measurement, scope, and data-access constraints
+- [Related literature](research/related_work.md) — connections to Broadway economics and robust-inference methods
+- [Executed notebooks](notebooks/) — data validation, exploration, regression, diagnostics, robustness, and market analysis
+- [Machine-readable results](results/) — coefficients, diagnostics, benchmark comparisons, and public aggregate summaries
 
-## Publication boundary
+## Reproduce with authorized inputs
 
-The public demo exposes aggregate model summaries only. Regenerating the pipeline creates detailed charts with embedded observations: do not publish regenerated detailed charts without source redistribution authorization. Original documents are excluded. No data or code license is asserted on behalf of the owner.
+Python 3.11 or later is required. The original six-sheet workbook is intentionally excluded because redistribution permission has not been established. Obtain authorized access, place the workbook in a private directory, and set `BROADWAY_INPUT_DIR` to that directory.
 
-Once rights are confirmed, create a GitHub repository, push this directory and enable GitHub Pages from the main branch, `/docs` folder. The static demo requires no build service. Repository: https://github.com/shacocn/broadway-box-office-research. Deployment status is available under Actions.
+```bash
+python -m venv .venv
+python -m pip install -e ".[research,test]"
+python -m broadway_research.pipeline \
+  --input-dir "$BROADWAY_INPUT_DIR" \
+  --output-dir .
+python -m pytest -q
+```
+
+On Windows PowerShell, set the input location with:
+
+```powershell
+$env:BROADWAY_INPUT_DIR = "C:\path\to\authorized\private_inputs"
+```
+
+Each notebook reads the same environment variable and performs the relevant computations directly from the authorized workbook. Executed notebook outputs contain aggregate statistics and unlabeled diagnostics only.
+
+## Repository structure
+
+```text
+docs/       GitHub Pages dashboard and bundled browser assets
+figures/    Reproducible static research figures
+notebooks/  Five executed computational narratives
+research/   Methodology, report, literature, and limitations
+results/    Public aggregate results and validation summaries
+src/        Installable Python analysis package
+tests/      Artifact, integration, privacy, and scientific checks
+```
+
+## Statistical scope
+
+The production model uses OLS because the reported estimand is a linear conditional association in log average weekly gross and direct numerical comparison with the supplied paper is required. HC3 covariance addresses leverage-sensitive heteroskedasticity in the small cross-section. Exploratory weekly models use HAC covariance with eight lags to allow short-run heteroskedasticity and serial correlation.
+
+No observation is automatically removed as an outlier. Leverage, Cook's distance, residual behavior, design rank, and condition number are reported. Market model C replaces the rank-deficient combination of annual tourism and year fixed effects with elapsed time and a post-reopening indicator; its changed fit is not presented as an exact reproduction.
+
+## Public-data boundary
+
+The repository publishes code, executed notebooks, estimates, validation metadata, and disclosure-controlled aggregate summaries. It does **not** publish the source workbook, the paper, title-level source rows, or weekly source rows. No license or redistribution right is asserted over third-party data.
+
+## Citation and attribution
+
+Source coverage and paper benchmarks are documented in [research/source_coverage.md](research/source_coverage.md). Academic context is documented in [research/related_work.md](research/related_work.md). Gross values are nominal US dollars unless stated otherwise.

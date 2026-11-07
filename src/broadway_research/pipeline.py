@@ -1,61 +1,481 @@
-import argparse,json,hashlib
-from pathlib import Path
-import numpy as np,pandas as pd
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import plotly.express as px
-from .ingest import load
-from .production_analysis import fit,samples,formula
-from .market_analysis import models
-from .diagnostics import inspect
+"""Deterministic end-to-end research pipeline.
 
-def main():
- a=argparse.ArgumentParser();a.add_argument('--input-dir',required=True);a.add_argument('--output-dir',default='.');args=a.parse_args();o=Path(args.output_dir)
- for d in ['results','figures','docs','research','data']: (o/d).mkdir(parents=True,exist_ok=True)
- p,m=load(args.input_dir);f=fit(p)
- assert p.shape==(67,19) and m.shape==(501,21)
- assert m.unemployment_rate_pct.isna().sum()==244
- expected={'r_squared':(.6079569056109908,f.rsquared),'capacity':(1.0073848481499095,f.params['log_seats']),'capacity_p':(3.582017220037733e-5,f.pvalues['log_seats']),'adapted':(.2867209169,f.params['Adapted'])}
- comparison=pd.DataFrame([dict(metric=k,benchmark=v[0],computed=v[1],difference=v[1]-v[0],passed=abs(v[1]-v[0])<1e-6) for k,v in expected.items()]);assert comparison.passed.all();comparison.to_csv(o/'results/paper_vs_python.csv',index=False)
- ci=f.conf_int();coef=pd.DataFrame(dict(estimate=f.params,se=f.bse,p=f.pvalues,lower=ci[0],upper=ci[1]));coef.to_csv(o/'results/production_coefficients.csv')
- robust=[]
- for name,s in samples(p).items():
-  g=fit(s);c=g.conf_int().loc['log_seats'];robust.append(dict(sample=name,n=int(g.nobs),r_squared=g.rsquared,adjusted_r_squared=g.rsquared_adj,capacity=g.params['log_seats'],lower=c.iloc[0],upper=c.iloc[1],p=g.pvalues['log_seats'],formula=formula(p)))
- r=pd.DataFrame(robust);r.to_csv(o/'results/robustness_results.csv',index=False)
- missing=m.assign(missing=m.unemployment_rate_pct.isna()).groupby('year').missing.agg(['sum','count']);missing['rate']=missing['sum']/missing['count'];missing.to_csv(o/'results/missingness_by_year.csv')
- qa={'production_shape':list(p.shape),'market_shape':list(m.shape),'production_duplicates':int(p.duplicated().sum()),'market_duplicate_dates':int(m.week_ending.duplicated().sum()),'log_gross_max_error':float(abs(np.log(p.Avg_Gross_USD)-p.log_gross).max()),'seat_range':np.exp(p.log_seats).agg(['min','max']).to_dict(),'nonpositive_gross':int((m.market_gross_usd<=0).sum()),'date_min':str(m.week_ending.min()),'date_max':str(m.week_ending.max()),'style_counts':p.Music_Style.value_counts().to_dict(),'production_diagnostics':inspect(f),'unemployment_missing':244}
- (o/'results/qa.json').write_text(json.dumps(qa,indent=2))
- dictionary=pd.concat([pd.DataFrame({'level':level,'variable':d.columns,'dtype':d.dtypes.astype(str).values,'missing':d.isna().sum().values}) for level,d in [('production',p),('market',m)]],ignore_index=True);dictionary.to_csv(o/'results/data_dictionary.csv',index=False)
- inf=f.get_influence();pd.DataFrame({'observation':np.arange(len(p)),'leverage':inf.hat_matrix_diag,'cooks_distance':inf.cooks_distance[0],'residual':f.resid}).to_csv(o/'results/influence.csv',index=False)
- market=[]
- for k,(form,g) in models(m).items():
-  market.append(dict(model=k,status='Exploratory extension; not exact reproduction',n=int(g.nobs),r_squared=g.rsquared,paper_n={'A':501,'B':257,'C':236,'D':257}[k],paper_r_squared={'A':.507,'B':.699,'C':.671,'D':.696}[k],formula=form,**inspect(g)))
-  pd.DataFrame({'estimate':g.params,'p':g.pvalues,'lower':g.conf_int()[0],'upper':g.conf_int()[1]}).to_csv(o/f'results/market_{k}_coefficients.csv')
- market=pd.DataFrame(market);market.to_csv(o/'results/market_extensions.csv',index=False)
- def save(name):
-  plt.tight_layout();plt.savefig(o/f'figures/{name}.png',dpi=180);plt.close()
- plt.scatter(np.exp(p.log_seats),p.Avg_Gross_USD/1e6);plt.xlabel('Theatre seats (back-transformed)');plt.ylabel('Average weekly gross (million USD)');save('capacity')
- plt.hist(p.Avg_Gross_USD/1e6,bins=15);plt.xlabel('Average weekly gross (million USD), N=67');plt.ylabel('Productions');save('gross_distribution')
- plt.bar(missing.index,missing['sum']);plt.ylabel('Weeks missing unemployment');plt.xlabel('Year');save('missingness')
- plt.scatter(f.fittedvalues,f.resid);plt.axhline(0,color='black');plt.xlabel('Fitted log gross');plt.ylabel('Residual');save('residuals')
- plt.figure(figsize=(9,9));plt.errorbar(coef.estimate,range(len(coef)),xerr=[coef.estimate-coef.lower,coef.upper-coef.estimate],fmt='o');plt.yticks(range(len(coef)),coef.index);plt.axvline(0,color='gray');plt.xlabel('OLS coefficient and HC3 95% interval');save('coefficients')
- market_sorted=m.sort_values('week_ending');segments=market_sorted.week_ending.diff().dt.days.gt(14).cumsum()
- for _,s in market_sorted.groupby(segments):plt.plot(s.week_ending,s.market_gross_usd/1e6)
- plt.xlabel('Week ending; gaps remain unconnected');plt.ylabel('Market gross (million USD)');save('market')
- groups=[]
- for v in ['Adapted','Revival']:
-  for k,s in p.groupby(v):groups.append(dict(variable=v,value=int(k),n=len(s),mean=s.Avg_Gross_USD.mean(),se=s.Avg_Gross_USD.sem()))
- pd.DataFrame(groups).to_csv(o/'results/group_comparisons.csv',index=False)
- plt.bar(range(4),[x['mean']/1e6 for x in groups],yerr=[1.96*x['se']/1e6 for x in groups]);plt.xticks(range(4),[x['variable']+'='+str(x['value'])+' n='+str(x['n']) for x in groups],rotation=15);plt.ylabel('Mean gross (million USD); normal 95% intervals');save('groups')
- scatter=px.scatter(p.assign(seats=np.exp(p.log_seats)),x='seats',y='Avg_Gross_USD',color='Music_Style',hover_name='Show',labels={'Avg_Gross_USD':'Average weekly gross (USD)'})
- scatter.write_html(o/'docs/production.html',include_plotlyjs=True)
- timeline=px.line(market_sorted.assign(segment=segments.astype(str)),x='week_ending',y='market_gross_usd',line_group='segment');timeline.write_html(o/'docs/market.html',include_plotlyjs=True)
- limitations='The 67 production aggregates cannot reconstruct the unavailable 4,972 show-week records or selection trail. These are observational associations, not causal effects. Budgets, casting, pricing and marketing are unmeasured. Labels are provisional. Hamilton is the only HipHop production. Removing it changes category support. R-squared across different samples is not a model ranking. Unemployment is missing for 244 of 501 weeks (48.7%), systematically by time. Annual tourism and monthly macro indicators repeat across weeks. Pandemic shutdown and reopening create structural breaks. Original market design matrices are unavailable; current market estimates are exploratory. Annual tourism with year indicators creates collinearity. HAC uses eight successive observed rows, which need not be consecutive calendar weeks across gaps. No missing values are imputed. Source redistribution permission remains unconfirmed.'
- methods='Production OLS uses HC3 covariance and the exact formula: `'+formula(p)+'`. Categorical levels use sorted treatment coding; coefficient labels identify comparisons with the omitted baseline. Market extensions use month and year controls with HAC maximum lag 8, complete cases per formula, and chronological ordering. Their explicit formulas and matrix diagnostics are in results/market_extensions.csv. Seats are exp(log_seats), not independently verified capacity counts. Gross is nominal USD. No inflation adjustment is applied.'
- results='Production N=67; R-squared '+str(f.rsquared)+'; adjusted R-squared '+str(f.rsquared_adj)+'. Capacity elasticity '+str(f.params['log_seats'])+', 95% CI '+str(ci.loc['log_seats'].tolist())+', HC3 p='+str(f.pvalues['log_seats'])+'. A 1% capacity difference is associated with approximately 1.01% gross difference conditional on controls.\n\n'+comparison.to_markdown(index=False)+'\n\n'+r.drop(columns='formula').to_markdown(index=False)+'\n\n'+market.drop(columns='formula').to_markdown(index=False)
- for name,body in {'methodology':methods,'limitations':limitations,'results':results,'report':'## Abstract\n\n'+results+'\n\n## Methods\n\n'+methods+'\n\n## Discussion and limitations\n\n'+limitations,'reproducibility':'Install with `python -m pip install -e .` then run `python -m broadway_research.pipeline --input-dir /path/to/authorized/private_inputs --output-dir .` and `python -m pytest -q`. Original data must be obtained separately with authorization. Generated interactive charts embed source observations and require a rights review before public deployment.','source_coverage':'The supplied paper establishes reported benchmarks and methods. The six-sheet workbook supplies two analysis tables, production coefficients, selected market coefficients, model comparisons and provenance notes. Production coefficients are directly reproducible. Original upstream workbooks, acquisition snapshots, full market matrices and microdata are absent. Reference CSV files are secondary exports, not independent evidence.'}.items(): (o/f'research/{name}.md').write_text('# '+name.replace('_',' ').title()+'\n\n'+body,encoding='utf-8')
- html='<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Broadway Box Office Research</title><style>body{font:18px system-ui;color:#193044;background:#f7f5ef;max-width:1100px;margin:auto;padding:28px}a{color:#075985}iframe{width:100%;height:560px;border:0}table{font-size:13px;display:block;overflow:auto}section{padding:24px 0}img{max-width:100%}</style><h1>Broadway Box Office</h1><p>A Reproducible Two-Level Empirical Analysis</p><p>67 productions · 501 observed market weeks</p><nav><a href="#production">Production</a> · <a href="#market">Market</a> · <a href="#methods">Methods</a></nav><section id="production"><h2>Production characteristics</h2><p>Descriptive capacity–gross relationship. This scatter is not the multivariable coefficient and does not identify causality. Click legend entries to filter styles.</p><iframe title="Production capacity and gross" src="production.html"></iframe>'+comparison.to_html(index=False)+'<h2>Sensitivity analysis</h2>'+r.drop(columns='formula').to_html(index=False)+'</section><section id="market"><h2>Market conditions</h2><p>Observed periods are separated across gaps, including the pandemic shutdown. Exploratory models do not reproduce original A–D design matrices.</p><iframe title="Weekly market gross" src="market.html"></iframe>'+market.drop(columns='formula').to_html(index=False)+'<h3>Unemployment coverage</h3>'+missing.to_html()+'</section><section id="methods"><h2>Methods and limitations</h2><p>'+methods+'</p><p>'+limitations+'</p></section></html>'
- (o/'docs/index.html').write_text(html,encoding='utf-8')
- print(results)
-if __name__=='__main__':main()
+The pipeline reads an authorized private workbook and writes generated research
+artifacts to ``results/`` and ``figures/``. It deliberately does not write to
+``docs/`` or ``research/`` so a scientific rerun cannot overwrite the curated
+portfolio website or authored narrative.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+from .diagnostics import inspect
+from .ingest import load
+from .market_analysis import model_notes, models
+from .production_analysis import fit, formula, samples
+
+PRODUCTION_BENCHMARKS = {
+    "r_squared": 0.6079569056109908,
+    "capacity": 1.0073848481499095,
+    "capacity_p": 3.582017220037733e-5,
+    "adapted": 0.2867209169,
+}
+PAPER_MARKET_N = {"A": 501, "B": 257, "C": 236, "D": 257}
+PAPER_MARKET_R2 = {"A": 0.507, "B": 0.699, "C": 0.671, "D": 0.696}
+
+
+def _json_default(value):
+    if isinstance(value, (np.integer, np.floating)):
+        return value.item()
+    if isinstance(value, (pd.Timestamp, pd.Period)):
+        return str(value)
+    raise TypeError(f"Cannot serialize {type(value)!r}")
+
+
+def _records(frame: pd.DataFrame) -> list[dict[str, object]]:
+    """Return strict-JSON records, translating missing values to null."""
+    clean = frame.astype(object).where(pd.notna(frame), None)
+    return clean.to_dict("records")
+
+
+def _save_figure(path: Path) -> None:
+    plt.tight_layout()
+    plt.savefig(path, dpi=180, bbox_inches="tight")
+    plt.close()
+
+
+def _public_aggregates(production: pd.DataFrame, market: pd.DataFrame, results: Path):
+    """Write aggregates that are safe for a public dashboard.
+
+    Means are suppressed for music-style cells with fewer than three
+    productions so singleton categories do not disclose an underlying row.
+    """
+    groups = []
+    for variable in ("Adapted", "Revival"):
+        for value, sample in production.groupby(variable, observed=True):
+            se = float(sample["Avg_Gross_USD"].sem())
+            groups.append(
+                {
+                    "variable": variable,
+                    "value": int(value),
+                    "n": int(len(sample)),
+                    "mean_gross_usd": float(sample["Avg_Gross_USD"].mean()),
+                    "median_gross_usd": float(sample["Avg_Gross_USD"].median()),
+                    "se_gross_usd": se,
+                    "ci95_lower_usd": float(sample["Avg_Gross_USD"].mean() - 1.96 * se),
+                    "ci95_upper_usd": float(sample["Avg_Gross_USD"].mean() + 1.96 * se),
+                }
+            )
+    group_summary = pd.DataFrame(groups)
+    group_summary.to_csv(results / "production_group_summary.csv", index=False)
+
+    style_rows = []
+    for style, sample in production.groupby("Music_Style", observed=True):
+        n = int(len(sample))
+        style_rows.append(
+            {
+                "music_style": style,
+                "n": n,
+                "mean_gross_usd": (
+                    float(sample["Avg_Gross_USD"].mean()) if n >= 3 else np.nan
+                ),
+                "mean_seats": float(np.exp(sample["log_seats"]).mean()) if n >= 3 else np.nan,
+                "suppressed": n < 3,
+            }
+        )
+    style_summary = pd.DataFrame(style_rows).sort_values("n", ascending=False)
+    style_summary.to_csv(results / "production_style_summary.csv", index=False)
+
+    plot_columns = [column for column in production if column.startswith("Plot_")]
+    plot_summary = pd.DataFrame(
+        {
+            "plot_category": [column.removeprefix("Plot_") for column in plot_columns],
+            "n": [int(production[column].sum()) for column in plot_columns],
+            "share": [float(production[column].mean()) for column in plot_columns],
+        }
+    ).sort_values("n", ascending=False)
+    plot_summary.to_csv(results / "plot_category_summary.csv", index=False)
+
+    annual = (
+        market.groupby("year", observed=True)
+        .agg(
+            observed_weeks=("week_ending", "size"),
+            total_gross_usd=("market_gross_usd", "sum"),
+            mean_weekly_gross_usd=("market_gross_usd", "mean"),
+            median_weekly_gross_usd=("market_gross_usd", "median"),
+            mean_weekly_attendance=("market_attendance", "mean"),
+            mean_gross_per_attendee_usd=("gross_per_attendee_usd", "mean"),
+            mean_capacity_pct=("capacity_pct", "mean"),
+            unemployment_observed=("unemployment_rate_pct", "count"),
+            holiday_weeks=("holiday_week", "sum"),
+        )
+        .reset_index()
+    )
+    annual["unemployment_missing"] = (
+        annual["observed_weeks"] - annual["unemployment_observed"]
+    )
+    annual.to_csv(results / "market_annual_summary.csv", index=False)
+
+    season = (
+        market.groupby("season", observed=True)
+        .agg(
+            observed_weeks=("week_ending", "size"),
+            total_gross_usd=("market_gross_usd", "sum"),
+            mean_weekly_gross_usd=("market_gross_usd", "mean"),
+            mean_weekly_attendance=("market_attendance", "mean"),
+            mean_capacity_pct=("capacity_pct", "mean"),
+            mean_gross_per_attendee_usd=("gross_per_attendee_usd", "mean"),
+        )
+        .reset_index()
+        .sort_values("season")
+    )
+    season.to_csv(results / "market_season_summary.csv", index=False)
+
+    quarterly_source = market.assign(
+        quarter=market["week_ending"].dt.to_period("Q").astype(str)
+    )
+    quarter = (
+        quarterly_source.groupby("quarter", observed=True)
+        .agg(
+            observed_weeks=("week_ending", "size"),
+            mean_weekly_gross_usd=("market_gross_usd", "mean"),
+            mean_weekly_attendance=("market_attendance", "mean"),
+            mean_gross_per_attendee_usd=("gross_per_attendee_usd", "mean"),
+        )
+        .reset_index()
+        .sort_values("quarter")
+    )
+    quarter.to_csv(results / "market_quarter_summary.csv", index=False)
+
+    monthly = (
+        market.groupby("month", observed=True)
+        .agg(
+            observed_weeks=("week_ending", "size"),
+            mean_weekly_gross_usd=("market_gross_usd", "mean"),
+            mean_weekly_attendance=("market_attendance", "mean"),
+        )
+        .reset_index()
+        .sort_values("month")
+    )
+    monthly.to_csv(results / "market_monthly_summary.csv", index=False)
+
+    holiday = (
+        market.assign(holiday_group=np.where(market["holiday_week"].eq(1), "Holiday", "Other"))
+        .groupby("holiday_group", observed=True)
+        .agg(
+            observed_weeks=("week_ending", "size"),
+            mean_weekly_gross_usd=("market_gross_usd", "mean"),
+            median_weekly_gross_usd=("market_gross_usd", "median"),
+            mean_weekly_attendance=("market_attendance", "mean"),
+        )
+        .reset_index()
+    )
+    holiday.to_csv(results / "market_holiday_summary.csv", index=False)
+    return group_summary, style_summary, plot_summary, annual, season, quarter, monthly, holiday
+
+
+def run_pipeline(input_dir: str | Path, output_dir: str | Path = ".") -> dict[str, object]:
+    output = Path(output_dir)
+    results = output / "results"
+    figures = output / "figures"
+    results.mkdir(parents=True, exist_ok=True)
+    figures.mkdir(parents=True, exist_ok=True)
+
+    production, market = load(input_dir)
+    if production.shape != (67, 19):
+        raise ValueError(f"Expected production shape (67, 19), got {production.shape}")
+    if market.shape != (501, 21):
+        raise ValueError(f"Expected market shape (501, 21), got {market.shape}")
+    if int(market["unemployment_rate_pct"].isna().sum()) != 244:
+        raise ValueError("Expected 244 missing market unemployment observations")
+
+    production_fit = fit(production)
+    computed = {
+        "r_squared": production_fit.rsquared,
+        "capacity": production_fit.params["log_seats"],
+        "capacity_p": production_fit.pvalues["log_seats"],
+        "adapted": production_fit.params["Adapted"],
+    }
+    comparison = pd.DataFrame(
+        [
+            {
+                "metric": metric,
+                "benchmark": benchmark,
+                "computed": computed[metric],
+                "difference": computed[metric] - benchmark,
+                "passed": abs(computed[metric] - benchmark) < 1e-6,
+            }
+            for metric, benchmark in PRODUCTION_BENCHMARKS.items()
+        ]
+    )
+    if not bool(comparison["passed"].all()):
+        raise AssertionError("Production benchmark validation failed")
+    comparison.to_csv(results / "paper_vs_python.csv", index=False)
+
+    confidence = production_fit.conf_int()
+    coefficients = pd.DataFrame(
+        {
+            "term": production_fit.params.index,
+            "estimate": production_fit.params.values,
+            "se_hc3": production_fit.bse.values,
+            "p_hc3": production_fit.pvalues.values,
+            "ci95_lower": confidence.iloc[:, 0].values,
+            "ci95_upper": confidence.iloc[:, 1].values,
+        }
+    )
+    coefficients.to_csv(results / "production_coefficients.csv", index=False)
+
+    robustness_rows = []
+    for name, sample in samples(production).items():
+        sensitivity_fit = fit(sample)
+        capacity_ci = sensitivity_fit.conf_int().loc["log_seats"]
+        robustness_rows.append(
+            {
+                "sample": name,
+                "n": int(sensitivity_fit.nobs),
+                "r_squared": sensitivity_fit.rsquared,
+                "adjusted_r_squared": sensitivity_fit.rsquared_adj,
+                "capacity": sensitivity_fit.params["log_seats"],
+                "ci95_lower": capacity_ci.iloc[0],
+                "ci95_upper": capacity_ci.iloc[1],
+                "p_hc3": sensitivity_fit.pvalues["log_seats"],
+                "formula": formula(production),
+            }
+        )
+    robustness = pd.DataFrame(robustness_rows)
+    robustness.to_csv(results / "robustness_results.csv", index=False)
+
+    missingness = (
+        market.assign(missing=market["unemployment_rate_pct"].isna())
+        .groupby("year", observed=True)["missing"]
+        .agg(["sum", "count"])
+    )
+    missingness["rate"] = missingness["sum"] / missingness["count"]
+    missingness.to_csv(results / "missingness_by_year.csv")
+
+    qa = {
+        "production_shape": list(production.shape),
+        "market_shape": list(market.shape),
+        "production_duplicates": int(production.duplicated().sum()),
+        "market_duplicate_dates": int(market["week_ending"].duplicated().sum()),
+        "log_gross_max_error": float(
+            abs(np.log(production["Avg_Gross_USD"]) - production["log_gross"]).max()
+        ),
+        "seat_range": np.exp(production["log_seats"]).agg(["min", "max"]).to_dict(),
+        "nonpositive_gross": int((market["market_gross_usd"] <= 0).sum()),
+        "date_min": str(market["week_ending"].min().date()),
+        "date_max": str(market["week_ending"].max().date()),
+        "style_counts": production["Music_Style"].value_counts().to_dict(),
+        "production_diagnostics": inspect(production_fit),
+        "unemployment_missing": 244,
+    }
+    (results / "qa.json").write_text(
+        json.dumps(qa, indent=2, default=_json_default), encoding="utf-8"
+    )
+
+    data_dictionary = pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "level": level,
+                    "variable": data.columns,
+                    "dtype": data.dtypes.astype(str).values,
+                    "missing": data.isna().sum().values,
+                }
+            )
+            for level, data in (("production", production), ("market", market))
+        ],
+        ignore_index=True,
+    )
+    data_dictionary.to_csv(results / "data_dictionary.csv", index=False)
+
+    influence = production_fit.get_influence()
+    pd.DataFrame(
+        {
+            "observation": np.arange(len(production)),
+            "leverage": influence.hat_matrix_diag,
+            "cooks_distance": influence.cooks_distance[0],
+            "residual": production_fit.resid,
+        }
+    ).to_csv(results / "influence.csv", index=False)
+
+    market_rows = []
+    notes = model_notes()
+    for key, (market_formula, market_fit) in models(market).items():
+        diagnostics = inspect(market_fit)
+        market_rows.append(
+            {
+                "model": key,
+                "status": "Exploratory extension; not exact reproduction",
+                "n": int(market_fit.nobs),
+                "r_squared": market_fit.rsquared,
+                "adjusted_r_squared": market_fit.rsquared_adj,
+                "paper_n": PAPER_MARKET_N[key],
+                "paper_r_squared": PAPER_MARKET_R2[key],
+                "formula": market_formula,
+                "identification_note": notes[key],
+                **diagnostics,
+                "full_rank": diagnostics["rank"] == diagnostics["columns"],
+            }
+        )
+        market_ci = market_fit.conf_int()
+        pd.DataFrame(
+            {
+                "term": market_fit.params.index,
+                "estimate": market_fit.params.values,
+                "se_hac8": market_fit.bse.values,
+                "p_hac8": market_fit.pvalues.values,
+                "ci95_lower": market_ci.iloc[:, 0].values,
+                "ci95_upper": market_ci.iloc[:, 1].values,
+            }
+        ).to_csv(results / f"market_{key}_coefficients.csv", index=False)
+    market_extensions = pd.DataFrame(market_rows)
+    market_extensions.to_csv(results / "market_extensions.csv", index=False)
+    if not bool(market_extensions["full_rank"].all()):
+        raise AssertionError("A market extension remains rank deficient")
+
+    aggregate_tables = _public_aggregates(production, market, results)
+    (
+        group_summary,
+        style_summary,
+        plot_summary,
+        annual,
+        season,
+        quarter,
+        monthly,
+        holiday,
+    ) = aggregate_tables
+
+    dashboard = {
+        "metrics": {
+            "productions": int(len(production)),
+            "market_weeks": int(len(market)),
+            "production_r_squared": float(production_fit.rsquared),
+            "capacity_elasticity": float(production_fit.params["log_seats"]),
+            "capacity_p_hc3": float(production_fit.pvalues["log_seats"]),
+            "unemployment_missing": 244,
+        },
+        "production_key_coefficients": _records(
+            coefficients[
+                coefficients["term"].isin(["log_seats", "Adapted", "Revival"])
+            ]
+        ),
+        "robustness": _records(robustness.drop(columns=["formula"])),
+        "market_models": _records(market_extensions.drop(columns=["formula"])),
+        "production_groups": _records(group_summary),
+        "production_styles": _records(style_summary),
+        "plot_categories": _records(plot_summary),
+        "market_annual": _records(annual),
+        "market_season": _records(season),
+        "market_quarter": _records(quarter),
+        "market_monthly": _records(monthly),
+        "market_holiday": _records(holiday),
+        "unemployment_missingness": _records(missingness.reset_index()),
+    }
+    (results / "dashboard_data.json").write_text(
+        json.dumps(dashboard, indent=2, default=_json_default, allow_nan=False),
+        encoding="utf-8",
+    )
+
+    plt.scatter(np.exp(production["log_seats"]), production["Avg_Gross_USD"] / 1e6)
+    plt.xlabel("Theatre seats (back-transformed)")
+    plt.ylabel("Average weekly gross (million USD)")
+    _save_figure(figures / "capacity.png")
+
+    plt.hist(production["Avg_Gross_USD"] / 1e6, bins=15)
+    plt.xlabel("Average weekly gross (million USD), N=67")
+    plt.ylabel("Productions")
+    _save_figure(figures / "gross_distribution.png")
+
+    plt.bar(missingness.index.astype(str), missingness["sum"])
+    plt.ylabel("Weeks missing unemployment")
+    plt.xlabel("Year")
+    plt.xticks(rotation=45)
+    _save_figure(figures / "missingness.png")
+
+    plt.scatter(production_fit.fittedvalues, production_fit.resid)
+    plt.axhline(0, color="black", linewidth=1)
+    plt.xlabel("Fitted log gross")
+    plt.ylabel("Residual")
+    _save_figure(figures / "residuals.png")
+
+    plt.figure(figsize=(9, 9))
+    plt.errorbar(
+        coefficients["estimate"],
+        range(len(coefficients)),
+        xerr=[
+            coefficients["estimate"] - coefficients["ci95_lower"],
+            coefficients["ci95_upper"] - coefficients["estimate"],
+        ],
+        fmt="o",
+    )
+    plt.yticks(range(len(coefficients)), coefficients["term"])
+    plt.axvline(0, color="gray", linewidth=1)
+    plt.xlabel("OLS coefficient and HC3 95% interval")
+    _save_figure(figures / "coefficients.png")
+
+    plt.plot(season["season"], season["mean_weekly_gross_usd"] / 1e6, marker="o")
+    plt.xlabel("Broadway season")
+    plt.ylabel("Mean observed weekly market gross (million USD)")
+    plt.xticks(rotation=45)
+    _save_figure(figures / "market.png")
+
+    plt.bar(
+        range(len(group_summary)),
+        group_summary["mean_gross_usd"] / 1e6,
+        yerr=1.96 * group_summary["se_gross_usd"] / 1e6,
+    )
+    plt.xticks(
+        range(len(group_summary)),
+        [
+            f"{row.variable}={row.value} n={row.n}"
+            for row in group_summary.itertuples()
+        ],
+        rotation=15,
+    )
+    plt.ylabel("Mean gross (million USD); normal 95% intervals")
+    _save_figure(figures / "groups.png")
+
+    validation = {
+        "status": "passed",
+        "production_benchmarks_passed": bool(comparison["passed"].all()),
+        "market_models_full_rank": bool(market_extensions["full_rank"].all()),
+        "source_shapes": {"production": [67, 19], "market": [501, 21]},
+        "generated_public_aggregate_tables": 8,
+        "docs_preserved": True,
+    }
+    (results / "validation_summary.json").write_text(
+        json.dumps(validation, indent=2), encoding="utf-8"
+    )
+    return {
+        "production": production,
+        "market": market,
+        "production_fit": production_fit,
+        "comparison": comparison,
+        "robustness": robustness,
+        "market_extensions": market_extensions,
+        "validation": validation,
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--input-dir", required=True)
+    parser.add_argument("--output-dir", default=".")
+    args = parser.parse_args()
+    run = run_pipeline(args.input_dir, args.output_dir)
+    print(json.dumps(run["validation"], indent=2))
+
+
+if __name__ == "__main__":
+    main()

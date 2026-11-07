@@ -1,24 +1,44 @@
 # Results
 
-Production N=67; R-squared 0.6079569056109901; adjusted R-squared 0.42500346156278557. Capacity elasticity 1.0073848481499077, 95% CI [0.529649100084592, 1.4851205962152234], HC3 p=3.582017220037491e-05. A 1% capacity difference is associated with approximately 1.01% gross difference conditional on controls.
+## Exact aggregate production reproduction
 
-| metric     |   benchmark |    computed |   difference | passed   |
-|:-----------|------------:|------------:|-------------:|:---------|
-| r_squared  | 0.607957    | 0.607957    | -6.66134e-16 | True     |
-| capacity   | 1.00738     | 1.00738     | -1.77636e-15 | True     |
-| capacity_p | 3.58202e-05 | 3.58202e-05 | -2.41913e-18 | True     |
-| adapted    | 0.286721    | 0.286721    | -1.40234e-11 | True     |
+The 67-production OLS model reproduces all four supplied verification benchmarks to the prespecified `1e-6` tolerance. R² is **0.607957** and adjusted R² is **0.425003**. The theatre-capacity coefficient is **1.007385** (HC3 95% CI **0.529649 to 1.485121**, p = **0.0000358**). Conditional on the recorded controls, a 1% capacity difference is therefore associated with approximately a 1.01% difference in average weekly gross.
 
-| sample            |   n |   r_squared |   adjusted_r_squared |   capacity |    lower |   upper |           p |
-|:------------------|----:|------------:|---------------------:|-----------:|---------:|--------:|------------:|
-| Full sample       |  67 |    0.607957 |             0.425003 |   1.00738  | 0.529649 | 1.48512 | 3.58202e-05 |
-| Without Hamilton  |  66 |    0.568097 |             0.37614  |   1.00738  | 0.529649 | 1.48512 | 3.58202e-05 |
-| Without top 5%    |  63 |    0.531122 |             0.307847 |   0.923827 | 0.454106 | 1.39355 | 0.000115837 |
-| At least 20 weeks |  51 |    0.692047 |             0.469047 |   0.796268 | 0.296038 | 1.2965  | 0.00180928  |
+| Benchmark | Paper result | Python result | Absolute difference |
+|---|---:|---:|---:|
+| R² | 0.607957 | 0.607957 | < 1e-15 |
+| Capacity coefficient | 1.007385 | 1.007385 | < 1e-14 |
+| Capacity HC3 p-value | 0.0000358 | 0.0000358 | < 1e-17 |
+| Adapted coefficient | 0.286721 | 0.286721 | < 2e-11 |
 
-| model   | status                                        |   n |   r_squared |   paper_n |   paper_r_squared |   rank |   columns |   condition_number |   max_leverage |
-|:--------|:----------------------------------------------|----:|------------:|----------:|------------------:|-------:|----------:|-------------------:|---------------:|
-| A       | Exploratory extension; not exact reproduction | 501 |    0.506952 |       501 |             0.507 |     24 |        24 |       17.1188      |       0.123078 |
-| B       | Exploratory extension; not exact reproduction | 257 |    0.698749 |       257 |             0.699 |     21 |        26 |        6.40844e+18 |       0.196494 |
-| C       | Exploratory extension; not exact reproduction | 236 |    0.698932 |       236 |             0.671 |     20 |        27 |        2.51462e+35 |       0.202344 |
-| D       | Exploratory extension; not exact reproduction | 257 |    0.696198 |       257 |             0.696 |     21 |        26 |        5.19773e+18 |       0.192184 |
+Neither the adaptation coefficient (**0.286721**) nor the revival coefficient (**−0.284169**) has an HC3 95% interval that excludes zero. The creative-category coefficients are estimated imprecisely in this small, densely parameterized sample.
+
+## Prespecified production sensitivity analysis
+
+| Sample | N | R² | Capacity estimate | HC3 95% CI | HC3 p-value |
+|---|---:|---:|---:|---:|---:|
+| Full sample | 67 | 0.607957 | 1.007385 | 0.529649 to 1.485121 | 0.0000358 |
+| Without Hamilton | 66 | 0.568097 | 1.007385 | 0.529649 to 1.485121 | 0.0000358 |
+| Without top 5% by gross | 63 | 0.531122 | 0.923827 | 0.454106 to 1.393549 | 0.000116 |
+| At least 20 observed weeks | 51 | 0.692047 | 0.796268 | 0.296038 to 1.296498 | 0.00181 |
+
+The sign and practical scale of the capacity association persist under these alternatives. Identical capacity estimates after excluding `Hamilton` reflect the loss of the only HipHop observation and the resulting categorical reparameterization; they are not evidence that the observation has no influence. R² values across different samples are not model rankings.
+
+## Exploratory market extensions
+
+The market models below are newly specified extensions, not exact reproductions. Paper fit values are retained only as verification context because the original design matrices and upstream feature-construction code are unavailable.
+
+| Model | N | Extension R² | Paper R² | Design rank | Columns | Interpretation |
+|---|---:|---:|---:|---:|---:|---|
+| A | 501 | 0.506952 | 0.507 | 24 | 24 | Calendar extension, HAC(8) |
+| B | 257 | 0.698749 | 0.699 | 21 | 21 | Complete-case monthly macro extension, HAC(8) |
+| C | 236 | 0.707511 | 0.671 | 18 | 18 | Rank-repaired tourism extension, HAC(8) |
+| D | 257 | 0.696198 | 0.696 | 21 | 21 | Complete-case semiannual sentiment extension, HAC(8) |
+
+Model C replaces year fixed effects with elapsed time because annual tourism is collinear with a full set of year indicators. It also includes a coarse post-reopening indicator. This full-rank repair changes the estimand and raises R² relative to the reported paper value; it must not be described as an exact reproduction.
+
+## Missingness and evidence boundary
+
+Unemployment is unavailable for **244 of 501 weeks (48.7%)**. All observations in 2016–2019 are missing that field, as are 31 of 31 observed weeks in 2015 and 4 of 52 weeks in 2025. Complete-case macro models therefore characterize a later, time-selected subset. No missing values are imputed.
+
+All dollar values are nominal. The analysis is associational, does not observe production costs or profit, and does not reconstruct the unavailable show-week microdata.

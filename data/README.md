@@ -1,12 +1,7 @@
-# Source references and evidence boundary
+# Data access and source boundary
 
-The supplied paper cites the following data providers. These references do not establish exact acquisition versions or redistribution permission. Provider pages were accessible on 2026-11-06 except the TidyTuesday URL, whose browser fetch failed. No external academic literature review or claim of novelty is made.
+The original analysis workbook is intentionally absent from this public repository because redistribution permission has not been established. The repository does not provide a synthetic substitute that could be mistaken for the research source.
 
-- [IBDB](https://www.ibdb.com/)
-- [Broadway League](https://www.broadwayleague.com/)
-- [FRED UNRATE](https://fred.stlouisfed.org/series/UNRATE)
-- [FRED UMCSENT](https://fred.stlouisfed.org/series/UMCSENT)
-- [NYC Tourism](https://www.nyctourism.com/)
-- [TidyTuesday Broadway](https://github.com/rfordatascience/tidytuesday/tree/main/data/2020/2020-04-28)
+Authorized researchers should place the six-sheet workbook in a private directory and set `BROADWAY_INPUT_DIR` to that directory. The pipeline validates the expected production and market schemas before analysis. Variable types and missing counts are published in [`results/data_dictionary.csv`](../results/data_dictionary.csv).
 
-Original inputs and full processed datasets are withheld pending rights confirmation. Variable types and missing counts are in ../results/data_dictionary.csv.
+The supplied paper attributes source measures to the Internet Broadway Database, The Broadway League, FRED unemployment and consumer-sentiment series, New York City Tourism + Conventions, and TidyTuesday's Broadway release. Provider links, academic context, and provenance limitations are documented in [`research/related_work.md`](../research/related_work.md) and [`research/source_coverage.md`](../research/source_coverage.md). Provider pages do not by themselves establish the exact acquisition version, transformation history, or redistribution license of the supplied workbook.

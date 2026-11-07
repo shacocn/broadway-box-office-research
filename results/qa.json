@@ -15,8 +15,8 @@
     "max": 1873.9999999999998
   },
   "nonpositive_gross": 0,
-  "date_min": "2015-05-31 00:00:00",
-  "date_max": "2026-05-24 00:00:00",
+  "date_min": "2015-05-31",
+  "date_max": "2026-05-24",
   "style_counts": {
     "Traditional": 27,
     "Pop/Rock": 24,

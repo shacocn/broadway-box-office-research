@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import re
 
 import numpy as np
 import pandas as pd
@@ -130,3 +131,47 @@ def test_dashboard_assets_and_values_match_research_outputs():
         assert f"'{chart_id}'" in script
     assert ".707511" in script
     assert ".698932" not in script
+
+
+def test_traceability_handoff_is_complete_and_links_resolve():
+    handoff_names = [
+        "project_structure_map.md",
+        "paper_to_code_traceability.md",
+        "student_reproduction_guide.md",
+        "student_demo_walkthrough.md",
+        "delivery_checklist.md",
+    ]
+    documents = [ROOT / "README.md"] + [ROOT / "docs" / name for name in handoff_names]
+    combined = []
+    for document in documents:
+        assert document.is_file(), document
+        text = document.read_text(encoding="utf-8")
+        combined.append(text)
+        for target in re.findall(r"!?\[[^\]]*\]\(([^)]+)\)", text):
+            target = target.strip().split(" ", 1)[0]
+            if target.startswith(("http://", "https://", "mailto:", "#")):
+                continue
+            path_text = target.split("#", 1)[0]
+            if path_text:
+                assert (document.parent / path_text).resolve().exists(), (
+                    document,
+                    target,
+                )
+
+    content = "\n".join(combined)
+    for required in [
+        "1.007385",
+        "244 of 501",
+        "BROADWAY_INPUT_DIR",
+        "Exact reproduction",
+        "Methodological repair",
+        "Exploratory extension",
+        "```mermaid",
+    ]:
+        assert required in content
+    assert len(re.findall(r"```mermaid", content)) >= 2
+    assert not re.search(
+        r"\b(homework|class|lesson|teacher|assignment|training)\b",
+        content,
+        flags=re.IGNORECASE,
+    )

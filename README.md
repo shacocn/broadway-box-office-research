@@ -27,6 +27,14 @@ An auditable two-level study of Broadway box office performance. The production 
 - [Executed notebooks](notebooks/) — data validation, exploration, regression, diagnostics, robustness, and market analysis
 - [Machine-readable results](results/) — coefficients, diagnostics, benchmark comparisons, and public aggregate summaries
 
+## Traceability and handoff
+
+- [Project structure map](docs/project_structure_map.md) — end-to-end flow from private research inputs through models, outputs, dashboard, and tests
+- [Paper-to-code traceability](docs/paper_to_code_traceability.md) — claim-by-claim mapping to worksheets, notebooks, functions, result files, figures, and dashboard locations
+- [Student reproduction guide](docs/student_reproduction_guide.md) — authorized-input setup, exact commands, expected outputs, verification targets, and debugging guidance
+- [Student demo walkthrough](docs/student_demo_walkthrough.md) — concise meeting flow, key explanations, transitions, and contribution boundaries
+- [Delivery checklist](docs/delivery_checklist.md) — repository, reproduction, interpretation, provenance, and meeting-readiness checks
+
 ## Reproduce with authorized inputs
 
 Python 3.11 or later is required. The original six-sheet workbook is intentionally excluded because redistribution permission has not been established. Obtain authorized access, place the workbook in a private directory, and set `BROADWAY_INPUT_DIR` to that directory.
@@ -44,6 +52,7 @@ On Windows PowerShell, set the input location with:
 
 ```powershell
 $env:BROADWAY_INPUT_DIR = "C:\path\to\authorized\private_inputs"
+$env:BROADWAY_PRIVATE_INPUT_DIR = $env:BROADWAY_INPUT_DIR
 ```
 
 Each notebook reads the same environment variable and performs the relevant computations directly from the authorized workbook. Executed notebook outputs contain aggregate statistics and unlabeled diagnostics only.
@@ -51,7 +60,7 @@ Each notebook reads the same environment variable and performs the relevant comp
 ## Repository structure
 
 ```text
-docs/       GitHub Pages dashboard and bundled browser assets
+docs/       GitHub Pages dashboard, bundled assets, and traceability handoff
 figures/    Reproducible static research figures
 notebooks/  Five executed computational narratives
 research/   Methodology, report, literature, and limitations
